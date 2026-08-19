@@ -1,6 +1,8 @@
 # E-commerce Warehouse
 
 An end-to-end local data engineering project that generates synthetic e-commerce data, loads it into PostgreSQL, transforms it with dbt, tracks customer history with an SCD2 snapshot, and exposes marts for Metabase.
+
+For the full architecture, data model, pipeline flow, configuration contract, validation steps, and project limitations, see [docs/project_overview.md](docs/project_overview.md).
 ## Architecture
 
 ```text
