@@ -8,5 +8,6 @@ select
   oi.product_id,
   oi.quantity,
   oi.unit_price,
-  oi.amount
+  oi.amount,
+  o.status AS order_status
 from oi join o using(order_id)

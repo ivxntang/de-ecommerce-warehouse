@@ -1,11 +1,15 @@
-import os, random
+import logging
+import random
 from datetime import datetime, timedelta, timezone
-import pandas as pd
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
 
-load_dotenv()
-ENGINE = create_engine(os.getenv("DATABASE_URL"))
+import pandas as pd
+from sqlalchemy import text
+
+from db_config import create_database_engine
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+LOGGER = logging.getLogger(__name__)
+ENGINE = create_database_engine()
 
 random.seed(42)
 
@@ -18,19 +22,15 @@ def ensure_products():
     df = pd.DataFrame(PRODUCTS)
     df["updated_at"] = datetime.now(timezone.utc)
     with ENGINE.begin() as conn:
-        tmp = "tmp_products"
-        conn.execute(text(f"DROP TABLE IF EXISTS {tmp};"))
-        df.to_sql(tmp, conn, if_exists="replace", index=False)
-        conn.execute(text(f"""
-            INSERT INTO raw_products (product_id,name,category,price,updated_at)
-            SELECT product_id,name,category,price,updated_at FROM {tmp}
+                conn.execute(text("""
+                        INSERT INTO raw.raw_products (product_id,name,category,price,updated_at)
+                        VALUES (:product_id, :name, :category, :price, :updated_at)
             ON CONFLICT (product_id) DO UPDATE SET
               name=EXCLUDED.name,
               category=EXCLUDED.category,
               price=EXCLUDED.price,
-              updated_at=EXCLUDED.updated_at;
-            DROP TABLE {tmp};
-        """))
+                            updated_at=EXCLUDED.updated_at
+                """), df.to_dict("records"))
 
 def random_name():
     first = random.choice(["Alex","Jamie","Taylor","Jordan","Chris","Morgan","Riley","Casey","Avery","Kai","Jin","Wei","Sam","Evan","Noah","Maya","Ivy","Mei","Hana","Yuna"])
@@ -44,7 +44,7 @@ def random_email(name):
 
 def ensure_customers(n_seed=1000):
     with ENGINE.begin() as conn:
-        cnt = conn.execute(text("SELECT COUNT(*) FROM raw_customers")).scalar()
+        cnt = conn.execute(text("SELECT COUNT(*) FROM raw.raw_customers")).scalar()
     if cnt == 0:
         rows = []
         for i in range(n_seed):
@@ -61,7 +61,7 @@ def ensure_customers(n_seed=1000):
         df = pd.DataFrame(rows)
     else:
         with ENGINE.begin() as conn:
-            df = pd.read_sql("SELECT * FROM raw_customers", conn.connection)
+            df = pd.read_sql(text("SELECT * FROM raw.raw_customers"), conn)
         mutate_idx = df.sample(frac=0.05, random_state=random.randint(0,9999)).index
         for i in mutate_idx:
             if random.random() < 0.5:
@@ -73,29 +73,28 @@ def ensure_customers(n_seed=1000):
             df.loc[i,"updated_at"] = datetime.now(timezone.utc)
 
     with ENGINE.begin() as conn:
-        tmp = "tmp_customers"
-        conn.execute(text(f"DROP TABLE IF EXISTS {tmp};"))
-        df.to_sql(tmp, conn, if_exists="replace", index=False)
-        conn.execute(text(f"""
-            INSERT INTO raw_customers (customer_id,full_name,email,city,segment,updated_at)
-            SELECT customer_id,full_name,email,city,segment,updated_at FROM {tmp}
+                conn.execute(text("""
+                        INSERT INTO raw.raw_customers (customer_id,full_name,email,city,segment,updated_at)
+                        VALUES (:customer_id, :full_name, :email, :city, :segment, :updated_at)
             ON CONFLICT (customer_id) DO UPDATE SET
               full_name=EXCLUDED.full_name,
               email=EXCLUDED.email,
               city=EXCLUDED.city,
               segment=EXCLUDED.segment,
-              updated_at=EXCLUDED.updated_at;
-            DROP TABLE {tmp};
-        """))
+                            updated_at=EXCLUDED.updated_at
+                """), df.to_dict("records"))
 
-def generate_orders(n_orders=300):
+def generate_orders(customer_ids, n_orders=300):
+    if not customer_ids:
+        raise RuntimeError("Cannot generate orders without customers in raw.raw_customers.")
+
     order_rows, item_rows = [], []
     now = datetime.now(timezone.utc)
     for _ in range(n_orders):
         order_id = f"O{random.randint(10_000_000,99_999_999)}"
         ts = now - timedelta(days=random.randint(0,3), hours=random.randint(0,23), minutes=random.randint(0,59))
         status = random.choices(["paid","shipped","cancelled","refunded"], weights=[0.8,0.15,0.03,0.02])[0]
-        customer_id = f"C{100000+random.randint(0,999)}"
+        customer_id = random.choice(customer_ids)
         n_items = random.randint(1,5)
         total = 0.0
         for ln in range(1, n_items+1):
@@ -123,31 +122,32 @@ def generate_orders(n_orders=300):
 
 def load_orders(df_orders, df_items):
     with ENGINE.begin() as conn:
-        tmpo = "tmp_orders"
-        conn.execute(text(f"DROP TABLE IF EXISTS {tmpo};"))
-        df_orders.to_sql(tmpo, conn, if_exists="replace", index=False)
-        conn.execute(text(f"""
-            INSERT INTO raw_orders (order_id,customer_id,order_ts,status,total_amount)
-            SELECT order_id,customer_id,order_ts,status,total_amount FROM {tmpo}
+        conn.execute(text("""
+            INSERT INTO raw.raw_orders (order_id,customer_id,order_ts,status,total_amount)
+            VALUES (:order_id, :customer_id, :order_ts, :status, :total_amount)
             ON CONFLICT (order_id) DO NOTHING;
-            DROP TABLE {tmpo};
-        """))
-        tmpi = "tmp_items"
-        conn.execute(text(f"DROP TABLE IF EXISTS {tmpi};"))
-        df_items.to_sql(tmpi, conn, if_exists="replace", index=False)
-        conn.execute(text(f"""
-            INSERT INTO raw_order_items (order_id,line_number,product_id,quantity,unit_price,amount)
-            SELECT order_id,line_number,product_id,quantity,unit_price,amount FROM {tmpi}
+        """), df_orders.to_dict("records"))
+        conn.execute(text("""
+            INSERT INTO raw.raw_order_items (order_id,line_number,product_id,quantity,unit_price,amount)
+            VALUES (:order_id, :line_number, :product_id, :quantity, :unit_price, :amount)
             ON CONFLICT (order_id, line_number) DO NOTHING;
-            DROP TABLE {tmpi};
-        """))
+        """), df_items.to_dict("records"))
 
 def main():
-    ensure_products()
-    ensure_customers()
-    df_orders, df_items = generate_orders(n_orders=300)
-    load_orders(df_orders, df_items)
-    print(f"Loaded {len(df_orders)} new orders and {len(df_items)} items.")
+    try:
+        with ENGINE.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        ensure_products()
+        ensure_customers()
+        with ENGINE.connect() as conn:
+            customer_ids = conn.execute(text("SELECT customer_id FROM raw.raw_customers")).scalars().all()
+        df_orders, df_items = generate_orders(customer_ids, n_orders=300)
+        load_orders(df_orders, df_items)
+    except Exception:
+        LOGGER.exception("Ingestion failed")
+        raise
+
+    LOGGER.info("Loaded %s new orders and %s items.", len(df_orders), len(df_items))
 
 if __name__ == "__main__":
     main()

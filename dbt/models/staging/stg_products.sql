@@ -5,6 +5,6 @@ WITH src AS (
     category,
     CAST(price AS NUMERIC(10,2)) AS price,
     updated_at
-  FROM raw_products
+  FROM {{ source('raw', 'products') }}
 )
 SELECT * FROM src

@@ -6,6 +6,6 @@ WITH src AS (
     city,
     segment,
     updated_at
-  FROM raw_customers
+  FROM {{ source('raw', 'customers') }}
 )
 SELECT * FROM src

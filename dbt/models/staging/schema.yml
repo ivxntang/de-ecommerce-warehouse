@@ -2,26 +2,56 @@ version: 2
 
 models:
   - name: stg_customers
+    description: Cleaned customer records from the raw ingestion layer.
     columns:
       - name: customer_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: email
-        tests: [not_null]
+        data_tests: [not_null]
   - name: stg_products
+    description: Cleaned product catalogue records.
     columns:
       - name: product_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: price
-        tests: [not_null]
+        data_tests: [not_null]
   - name: stg_orders
+    description: Cleaned order headers with customer and status attributes.
     columns:
       - name: order_id
-        tests: [not_null, unique]
+        data_tests: [not_null, unique]
       - name: customer_id
-        tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'shipped', 'cancelled', 'refunded']
   - name: stg_order_items
+    description: Cleaned order line items at order and line-number grain.
     columns:
       - name: order_id
-        tests: [not_null]
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
       - name: line_number
-        tests: [not_null]
+        data_tests: [not_null]
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: quantity
+        data_tests: [not_null]
+      - name: amount
+        data_tests: [not_null]

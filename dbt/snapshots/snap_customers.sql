@@ -16,7 +16,7 @@ select
   email,
   city,
   segment,
-  updated_at
+  updated_at at time zone 'UTC' as updated_at
 from {{ ref('stg_customers') }}
 
 {% endsnapshot %}

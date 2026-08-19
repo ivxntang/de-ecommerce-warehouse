@@ -1,8 +1,14 @@
+select 'raw_orders' t, count(*) c from raw.raw_orders
+union all select 'raw_order_items', count(*) from raw.raw_order_items
+union all select 'raw_customers', count(*) from raw.raw_customers
+union all select 'raw_products', count(*) from raw.raw_products;
+select max(order_ts::date) as latest_order_date
+from raw.raw_orders;
 -- 1) Raw table counts
-select 'raw_orders' t, count(*) c from public.raw_orders
-union all select 'raw_order_items', count(*) from public.raw_order_items
-union all select 'raw_customers', count(*) from public.raw_customers
-union all select 'raw_products', count(*) from public.raw_products;
+select 'raw_orders' t, count(*) c from raw.raw_orders
+union all select 'raw_order_items', count(*) from raw.raw_order_items
+union all select 'raw_customers', count(*) from raw.raw_customers
+union all select 'raw_products', count(*) from raw.raw_products;
 
 -- 2) Daily sales (last 10 days)
 select order_date, gross_sales
@@ -34,5 +40,5 @@ order by sales desc
 limit 5;
 
 -- 6) Data freshness (latest order date)
-select max(order_date) as latest_order_date
-from public.raw_orders;
+select max(order_ts::date) as latest_order_date
+from raw.raw_orders;

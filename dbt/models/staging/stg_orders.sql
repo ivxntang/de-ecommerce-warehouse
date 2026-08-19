@@ -5,6 +5,6 @@ WITH src AS (
     order_ts,
     status,
     CAST(total_amount AS NUMERIC(12,2)) AS total_amount
-  FROM raw_orders
+  FROM {{ source('raw', 'orders') }}
 )
 SELECT * FROM src
